@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="Deformable Neural Radiance Fields creates free-viewpoint portraits (nerfies) from casually captured videos.">
+  <meta name="keywords" content="Nerfies, D-NeRF, NeRF">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DEIL: Depth-Estimated Imitation Learning</title>
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-PYVRSFMDRL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+
+    gtag('js', new Date());
+
+    gtag('config', 'G-PYVRSFMDRL');
+  </script>
+
+  <script>
+
+    function updateVideo() {
+      var task = document.getElementById("menu-tasks").value;
+      var level = document.getElementById("menu-levels").value;
+
+      if (!task) {
+        return;
+      }
+
+      console.log("menu", level, task)
+
+      var methods = [
+        { id: "interactive-video-gt", suffix: "gt" },
+        { id: "interactive-video-pi3", suffix: "pi3" },
+        { id: "interactive-video-vggt", suffix: "vggt" },
+      ];
+
+      methods.forEach(function(method) {
+        var video = document.getElementById(method.id);
+        if (!video) {
+          return;
+        }
+
+        video.src = "static/videos/" + level + "/" + task + "_" + method.suffix + ".mp4";
+        video.play();
+      });
+      // video.playbackRate = 1.75;
+      // video.play();
+    }
+
+    function populateTaskOptions() {
+      var level = document.getElementById("menu-levels").value;
+      var taskSelect = document.getElementById("menu-tasks");
+      if (!taskSelect) {
+        return;
+      }
+
+      var taskOptionsByLevel = {
+        challenging: [
+          { value: "transparent_cup_into_bin", label: "Tranparent Cup into Bin." },
+          { value: "box_into_transparent_basket", label: "Box into Transparent Basket." },
+          { value: "tilt_mesh_basket_to_pour_out_fruit", label: "Tile Mesh Basket to Pour Out Fruit." },
+          { value: "bottle_into_mesh_basket", label: "Bottle into Mesh Basket." },
+          { value: "metal_bowl_on_plate", label: "Metal Bowl on Plate." },
+          { value: "pick_up_goblet_near_mirror", label: "Pick Up Goblet Near Mirror." },
+          { value: "mug_on_box", label: "Mug on Box." },
+          { value: "pick_up_kettle_and_place_on_stove", label: "Pick Up Kettle and Place on Stove." },
+          { value: "pick_up_bread_and_place_on_plate", label: "Pick Up Bread and Place on Plate." },
+        ],
+        normal: [
+          { value: "cup_in_bin", label: "Cup in Bin."},
+          { value: "box_into_basket", label: "Box into Basket."},
+          { value: "tilt_basket_to_pour_out_fruit", label: "Tilt Basket to Pour Out Fruit."},
+          { value: "bowl_on_plate", label: "Bowl on Plate."},
+          { value: "stack_cups", label: "Stack Cups."},
+        ]
+      };
+
+      var options = taskOptionsByLevel[level] || [];
+      taskSelect.innerHTML = "";
+
+      options.forEach(function(option, index) {
+        var element = document.createElement("option");
+        element.value = option.value;
+        element.textContent = option.label;
+        if (option.disabled) {
+          element.disabled = true;
+        }
+        if (index === 0) {
+          element.selected = true;
+        }
+        taskSelect.appendChild(element);
+      });
+    }
+
+    function updateTaskHighlight() {
+      var task = document.getElementById("menu-tasks").value;
+      var badge = document.getElementById("task-highlight-badge");
+      if (!badge) {
+        return;
+      }
+
+      var labels = {
+        "transparent_cup_into_bin": { text: "TRANSPARENT", className: "task-type-transparent" },
+        "box_into_transparent_basket": { text: "TRANSPARENT", className: "task-type-transparent" },
+        "tilt_mesh_basket_to_pour_out_fruit": { text: "MESH", className: "task-type-mesh" },
+        "bottle_into_mesh_basket": { text: "MESH", className: "task-type-mesh" },
+        "metal_bowl_on_plate": { text: "MIRROR", className: "task-type-mirror" },
+        "pick_up_goblet_near_mirror": { text: "MIRROR", className: "task-type-mirror" },
+        "pick_up_kettle_and_place_on_stove": { text: "CLOSE", className: "task-type-close" },
+        "mug_on_box": { text: "CLOSE", className: "task-type-close" },
+        "pick_up_bread_and_place_on_plate": { text: "CLOSE", className: "task-type-close" },
+        "cup_in_bin": { text: "NORMAL", className: "task-type-default" },
+        "box_into_basket": { text: "NORMAL", className: "task-type-default" },
+        "tilt_basket_to_pour_out_fruit": { text: "NORMAL", className: "task-type-default" },
+        "bowl_on_plate": { text: "NORMAL", className: "task-type-default" },
+        "stack_cups": { text: "NORMAL", className: "task-type-default" }
+      };
+
+      var current = labels[task] || { text: "TASK", className: "task-type-default" };
+      badge.textContent = "[" + current.text + "]";
+      badge.className = "task-highlight-badge " + current.className;
+    }
+
+    function updateSimulationVideos() {
+      var taskSelect = document.getElementById("simulation-menu-tasks");
+      if (!taskSelect || !taskSelect.value) {
+        return;
+      }
+
+      var selectedTask = taskSelect.options[taskSelect.selectedIndex];
+      var availableVideos = 0;
+
+      document.querySelectorAll("video[data-simulation-estimator]").forEach(function(video) {
+        var estimator = video.dataset.simulationEstimator;
+        var filename = selectedTask.getAttribute("data-video-" + estimator.replace(/_/g, "-"));
+        var card = video.closest("[data-simulation-card]");
+        var outcomeBadge = card ? card.querySelector("[data-simulation-outcome]") : null;
+
+        if (!filename) {
+          if (card) {
+            card.style.display = "none";
+          }
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+          if (outcomeBadge) {
+            outcomeBadge.style.display = "none";
+            outcomeBadge.textContent = "";
+          }
+          return;
+        }
+
+        if (card) {
+          card.style.display = "";
+        }
+        availableVideos += 1;
+
+        var outcomeMatch = filename.match(/_(success|failure)\.mp4$/i);
+        if (outcomeBadge && outcomeMatch) {
+          var outcome = outcomeMatch[1].toLowerCase();
+          outcomeBadge.textContent = outcome.toUpperCase();
+          outcomeBadge.className = "tag is-light simulation-video-outcome " +
+            (outcome === "success" ? "is-success" : "is-danger");
+          outcomeBadge.style.display = "";
+        } else if (outcomeBadge) {
+          outcomeBadge.style.display = "none";
+          outcomeBadge.textContent = "";
+        }
+
+        video.src = "static/videos/dp3_sim/" + taskSelect.value + "/" + filename;
+        video.load();
+        var playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(function() {
+            // Browsers may pause autoplay until the page receives user input.
+          });
+        }
+      });
+
+      var emptyState = document.getElementById("simulation-videos-empty");
+      if (emptyState) {
+        emptyState.style.display = availableVideos === 0 ? "" : "none";
+      }
+    }
+
+    var ROLLOUT_SEQUENCE_IMAGES = [
+      { id: "rollout-front-raw", filename: "front_raw_rgb.png", alt: "Front camera raw RGB" },
+      { id: "rollout-front-mask", filename: "front_mask.png", alt: "Front camera mask" },
+      { id: "rollout-front-masked", filename: "front_masked_rgb.png", alt: "Front camera masked RGB" },
+      { id: "rollout-left-raw", filename: "left_shoulder_raw_rgb.png", alt: "Left camera raw RGB" },
+      { id: "rollout-left-mask", filename: "left_shoulder_mask.png", alt: "Left camera mask" },
+      { id: "rollout-left-masked", filename: "left_shoulder_masked_rgb.png", alt: "Left camera masked RGB" }
+    ];
+
+    var ROLLOUT_POINT_CLOUDS = [
+      { canvasId: "rollout-pi3-point-cloud", filename: "estimated_point_cloud.ply" },
+      { canvasId: "rollout-gt-point-cloud", filename: "ground_truth_point_cloud.ply" }
+    ];
+    var ROLLOUT_POINT_CLOUD_CACHE_LIMIT = 12;
+    var rolloutPointCloudCache = new Map();
+    var rolloutPointCloudViewers = [];
+    var rolloutSequencePrefetchTimer = null;
+
+    function plyPropertySize(type) {
+      var sizes = {
+        char: 1,
+        int8: 1,
+        uchar: 1,
+        uint8: 1,
+        short: 2,
+        int16: 2,
+        ushort: 2,
+        uint16: 2,
+        int: 4,
+        int32: 4,
+        uint: 4,
+        uint32: 4,
+        float: 4,
+        float32: 4,
+        double: 8,
+        float64: 8
+      };
+      return sizes[type] || 0;
+    }
+
+    function readPlyValue(view, offset, type) {
+      switch (type) {
+        case "char":
+        case "int8": return view.getInt8(offset);
+        case "uchar":
+        case "uint8": return view.getUint8(offset);
+        case "short":
+        case "int16": return view.getInt16(offset, true);
+        case "ushort":
+        case "uint16": return view.getUint16(offset, true);
+        case "int":
+        case "int32": return view.getInt32(offset, true);
+        case "uint":
+        case "uint32": return view.getUint32(offset, true);
+        case "float":
+        case "float32": return view.getFloat32(offset, true);
+        case "double":
+        case "float64": return view.getFloat64(offset, true);
+        default: throw new Error("Unsupported PLY property type: " + type);
+      }
+    }
+
+    function parseBinaryPointCloudPly(arrayBuffer) {
+      var bytes = new Uint8Array(arrayBuffer);
+      var headerMarker = "end_header";
+      var headerEnd = -1;
+
+      for (var index = 0; index <= bytes.length - headerMarker.length; index += 1) {
+        var matches = true;
+        for (var markerIndex = 0; markerIndex < headerMarker.length; markerIndex += 1) {
+          if (bytes[index + markerIndex] !== headerMarker.charCodeAt(markerIndex)) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) {
+          headerEnd = index + headerMarker.length;
+          while (headerEnd < bytes.length && bytes[headerEnd] !== 10) {
+            headerEnd += 1;
+          }
+          headerEnd += 1;
+          break;
+        }
+      }
+
+      if (headerEnd < 0) {
+        throw new Error("PLY header terminator not found.");
+      }
+
+      var header = new TextDecoder("ascii").decode(bytes.slice(0, headerEnd));
+      if (header.indexOf("format binary_little_endian 1.0") === -1) {
+        throw new Error("Only binary little-endian PLY files are supported.");
+      }
+
+      var vertexCount = 0;
+      var vertexProperties = [];
+      var readingVertices = false;
+      header.split(/\r?\n/).forEach(function(line) {
+        var parts = line.trim().split(/\s+/);
+        if (parts[0] === "element") {
+          readingVertices = parts[1] === "vertex";
+          if (readingVertices) {
+            vertexCount = Number(parts[2]);
+          }
+        } else if (readingVertices && parts[0] === "property") {
+          if (parts[1] === "list") {
+            throw new Error("List properties are not supported in point-cloud vertices.");
+          }
+          vertexProperties.push({ type: parts[1], name: parts[2] });
+        }
+      });
+
+      if (!vertexCount || !vertexProperties.length) {
+        throw new Error("PLY vertex schema is missing.");
+      }
+
+      var stride = 0;
+      var properties = {};
+      vertexProperties.forEach(function(property) {
+        var size = plyPropertySize(property.type);
+        if (!size) {
+          throw new Error("Unsupported PLY property type: " + property.type);
+        }
+        properties[property.name] = { type: property.type, offset: stride };
+        stride += size;
+      });
+
+      ["x", "y", "z", "red", "green", "blue"].forEach(function(name) {
+        if (!properties[name]) {
+          throw new Error("PLY is missing the " + name + " property.");
+        }
+      });
+
+      if (headerEnd + vertexCount * stride > arrayBuffer.byteLength) {
+        throw new Error("PLY vertex data is truncated.");
+      }
+
+      var view = new DataView(arrayBuffer);
+      var rawPositions = new Float32Array(vertexCount * 3);
+      var colors = new Uint8Array(vertexCount * 3);
+      var minimum = [Infinity, Infinity, Infinity];
+      var maximum = [-Infinity, -Infinity, -Infinity];
+
+      for (var vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+        var vertexOffset = headerEnd + vertexIndex * stride;
+        var positionOffset = vertexIndex * 3;
+        var coordinates = ["x", "y", "z"].map(function(name) {
+          var property = properties[name];
+          return readPlyValue(view, vertexOffset + property.offset, property.type);
+        });
+
+        coordinates.forEach(function(value, axis) {
+          if (!Number.isFinite(value)) {
+            throw new Error("PLY contains a non-finite coordinate.");
+          }
+          rawPositions[positionOffset + axis] = value;
+          minimum[axis] = Math.min(minimum[axis], value);
+          maximum[axis] = Math.max(maximum[axis], value);
+        });
+
+        ["red", "green", "blue"].forEach(function(name, channel) {
+          var property = properties[name];
+          colors[positionOffset + channel] = readPlyValue(view, vertexOffset + property.offset, property.type);
+        });
+      }
+
+      var center = minimum.map(function(value, axis) {
+        return (value + maximum[axis]) / 2;
+      });
+      var largestSpan = Math.max(
+        maximum[0] - minimum[0],
+        maximum[1] - minimum[1],
+        maximum[2] - minimum[2]
+      ) || 1;
+      var positions = new Float32Array(rawPositions.length);
+
+      for (var positionIndex = 0; positionIndex < rawPositions.length; positionIndex += 3) {
+        positions[positionIndex] = (rawPositions[positionIndex] - center[0]) / largestSpan;
+        positions[positionIndex + 1] = (rawPositions[positionIndex + 1] - center[1]) / largestSpan;
+        positions[positionIndex + 2] = (rawPositions[positionIndex + 2] - center[2]) / largestSpan;
+      }
+
+      return { positions: positions, colors: colors, count: vertexCount };
+    }
+
+    function loadRolloutPointCloud(url) {
+      if (rolloutPointCloudCache.has(url)) {
+        var cachedRequest = rolloutPointCloudCache.get(url);
+        rolloutPointCloudCache.delete(url);
+        rolloutPointCloudCache.set(url, cachedRequest);
+        return cachedRequest;
+      }
+
+      var request = fetch(url)
+        .then(function(response) {
+          if (!response.ok) {
+            throw new Error("Could not load " + url);
+          }
+          return response.arrayBuffer();
+        })
+        .then(parseBinaryPointCloudPly);
+
+      rolloutPointCloudCache.set(url, request);
+      request.catch(function() {
+        if (rolloutPointCloudCache.get(url) === request) {
+          rolloutPointCloudCache.delete(url);
+        }
+      });
+
+      while (rolloutPointCloudCache.size > ROLLOUT_POINT_CLOUD_CACHE_LIMIT) {
+        rolloutPointCloudCache.delete(rolloutPointCloudCache.keys().next().value);
+      }
+      return request;
+    }
+
+    function syncRolloutPointCloudView(sourceViewer) {
+      rolloutPointCloudViewers.forEach(function(viewer) {
+        if (viewer !== sourceViewer) {
+          viewer.yaw = sourceViewer.yaw;
+          viewer.pitch = sourceViewer.pitch;
+          viewer.zoom = sourceViewer.zoom;
+        }
+        viewer.requestRender();
+      });
+    }
+
+    function RolloutPointCloudViewer(canvas) {
+      this.canvas = canvas;
+      this.context = canvas.getContext("2d");
+      this.status = canvas.parentElement.querySelector("[data-point-cloud-status]");
+      this.data = null;
+      this.loadToken = 0;
+      this.yaw = 0;
+      this.pitch = 0;
+      this.zoom = 0.92;
+      this.dragging = false;
+      this.lastPointerX = 0;
+      this.lastPointerY = 0;
+      this.renderRequested = false;
+      this.attachInteractions();
+      this.resize();
+
+      var viewer = this;
+      if (typeof ResizeObserver !== "undefined") {
+        this.resizeObserver = new ResizeObserver(function() {
+          viewer.resize();
+        });
+        this.resizeObserver.observe(canvas);
+      } else {
+        window.addEventListener("resize", function() {
+          viewer.resize();
+        });
+      }
+    }
+
+    RolloutPointCloudViewer.prototype.attachInteractions = function() {
+      var viewer = this;
+      this.canvas.addEventListener("pointerdown", function(event) {
+        viewer.dragging = true;
+        viewer.lastPointerX = event.clientX;
+        viewer.lastPointerY = event.clientY;
+        viewer.canvas.setPointerCapture(event.pointerId);
+      });
+      this.canvas.addEventListener("pointermove", function(event) {
+        if (!viewer.dragging) {
+          return;
+        }
+        viewer.yaw += (event.clientX - viewer.lastPointerX) * 0.01;
+        viewer.pitch = Math.max(-1.45, Math.min(1.45,
+          viewer.pitch + (event.clientY - viewer.lastPointerY) * 0.01));
+        viewer.lastPointerX = event.clientX;
+        viewer.lastPointerY = event.clientY;
+        syncRolloutPointCloudView(viewer);
+      });
+      ["pointerup", "pointercancel", "lostpointercapture"].forEach(function(eventName) {
+        viewer.canvas.addEventListener(eventName, function() {
+          viewer.dragging = false;
+        });
+      });
+      this.canvas.addEventListener("wheel", function(event) {
+        event.preventDefault();
+        viewer.zoom = Math.max(0.4, Math.min(4,
+          viewer.zoom * Math.exp(-event.deltaY * 0.001)));
+        syncRolloutPointCloudView(viewer);
+      }, { passive: false });
+      this.canvas.addEventListener("dblclick", function() {
+        viewer.yaw = 0;
+        viewer.pitch = 0;
+        viewer.zoom = 0.92;
+        syncRolloutPointCloudView(viewer);
+      });
+      this.canvas.addEventListener("keydown", function(event) {
+        var handled = true;
+        if (event.key === "ArrowLeft") {
+          viewer.yaw -= 0.12;
+        } else if (event.key === "ArrowRight") {
+          viewer.yaw += 0.12;
+        } else if (event.key === "ArrowUp") {
+          viewer.pitch = Math.max(-1.45, viewer.pitch - 0.12);
+        } else if (event.key === "ArrowDown") {
+          viewer.pitch = Math.min(1.45, viewer.pitch + 0.12);
+        } else if (event.key === "+" || event.key === "=") {
+          viewer.zoom = Math.min(4, viewer.zoom * 1.12);
+        } else if (event.key === "-" || event.key === "_") {
+          viewer.zoom = Math.max(0.4, viewer.zoom / 1.12);
+        } else {
+          handled = false;
+        }
+        if (handled) {
+          event.preventDefault();
+          event.stopPropagation();
+          syncRolloutPointCloudView(viewer);
+        }
+      });
+    };
+
+    RolloutPointCloudViewer.prototype.resize = function() {
+      var bounds = this.canvas.getBoundingClientRect();
+      var pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      var width = Math.max(1, Math.round(bounds.width * pixelRatio));
+      var height = Math.max(1, Math.round(bounds.height * pixelRatio));
+      if (this.canvas.width !== width || this.canvas.height !== height) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+      }
+      this.requestRender();
+    };
+
+    RolloutPointCloudViewer.prototype.requestRender = function() {
+      if (this.renderRequested) {
+        return;
+      }
+      this.renderRequested = true;
+      var viewer = this;
+      requestAnimationFrame(function() {
+        viewer.renderRequested = false;
+        viewer.render();
+      });
+    };
+
+    RolloutPointCloudViewer.prototype.render = function() {
+      var context = this.context;
+      var width = this.canvas.width;
+      var height = this.canvas.height;
+      context.fillStyle = "#08111f";
+      context.fillRect(0, 0, width, height);
+      if (!this.data) {
+        return;
+      }
+
+      var cosineYaw = Math.cos(this.yaw);
+      var sineYaw = Math.sin(this.yaw);
+      var cosinePitch = Math.cos(this.pitch);
+      var sinePitch = Math.sin(this.pitch);
+      var scale = Math.min(width, height) * 0.82 * this.zoom;
+      var projected = [];
+
+      for (var index = 0; index < this.data.count; index += 1) {
+        var offset = index * 3;
+        var x = this.data.positions[offset];
+        var y = this.data.positions[offset + 1];
+        var z = this.data.positions[offset + 2];
+        var rotatedX = cosineYaw * x + sineYaw * z;
+        var yawDepth = -sineYaw * x + cosineYaw * z;
+        var rotatedY = cosinePitch * y - sinePitch * yawDepth;
+        var depth = sinePitch * y + cosinePitch * yawDepth;
+        var perspective = 2.7 / (2.7 - depth);
+
+        projected.push({
+          x: width / 2 + rotatedX * scale * perspective,
+          y: height / 2 - rotatedY * scale * perspective,
+          depth: depth,
+          perspective: perspective,
+          red: this.data.colors[offset],
+          green: this.data.colors[offset + 1],
+          blue: this.data.colors[offset + 2]
+        });
+      }
+
+      projected.sort(function(first, second) {
+        return first.depth - second.depth;
+      });
+      var basePointSize = Math.max(1.5, Math.min(width, height) / 130);
+      projected.forEach(function(point) {
+        var pointSize = basePointSize * point.perspective;
+        context.fillStyle = "rgb(" + point.red + "," + point.green + "," + point.blue + ")";
+        context.fillRect(
+          point.x - pointSize / 2,
+          point.y - pointSize / 2,
+          pointSize,
+          pointSize
+        );
+      });
+    };
+
+    RolloutPointCloudViewer.prototype.load = function(url) {
+      this.loadToken += 1;
+      var token = this.loadToken;
+      this.data = null;
+      this.status.hidden = false;
+      this.status.textContent = "Loading point cloud…";
+      this.status.classList.remove("is-error");
+      this.requestRender();
+
+      var viewer = this;
+      loadRolloutPointCloud(url)
+        .then(function(data) {
+          if (token !== viewer.loadToken) {
+            return;
+          }
+          viewer.data = data;
+          viewer.status.hidden = true;
+          viewer.requestRender();
+        })
+        .catch(function(error) {
+          if (token !== viewer.loadToken) {
+            return;
+          }
+          viewer.status.hidden = false;
+          viewer.status.textContent = "Point cloud unavailable";
+          viewer.status.classList.add("is-error");
+          console.error(error);
+        });
+    };
+
+    function updateRolloutPointClouds(step) {
+      rolloutPointCloudViewers.forEach(function(viewer, index) {
+        var config = ROLLOUT_POINT_CLOUDS[index];
+        viewer.load(rolloutSequenceImagePath(step, config.filename));
+      });
+    }
+
+    function prefetchRolloutSequenceStep(step) {
+      if (step < 0 || step > 45) {
+        return;
+      }
+      ROLLOUT_SEQUENCE_IMAGES.forEach(function(imageConfig) {
+        var image = new Image();
+        image.src = rolloutSequenceImagePath(step, imageConfig.filename);
+      });
+      ROLLOUT_POINT_CLOUDS.forEach(function(pointCloudConfig) {
+        loadRolloutPointCloud(rolloutSequenceImagePath(step, pointCloudConfig.filename));
+      });
+    }
+
+    function scheduleRolloutSequencePrefetch(step) {
+      window.clearTimeout(rolloutSequencePrefetchTimer);
+      rolloutSequencePrefetchTimer = window.setTimeout(function() {
+        prefetchRolloutSequenceStep(step - 1);
+        prefetchRolloutSequenceStep(step + 1);
+      }, 250);
+    }
+
+    function initializeRolloutPointClouds() {
+      rolloutPointCloudViewers = ROLLOUT_POINT_CLOUDS.map(function(config) {
+        var canvas = document.getElementById(config.canvasId);
+        return canvas ? new RolloutPointCloudViewer(canvas) : null;
+      }).filter(function(viewer) {
+        return viewer !== null;
+      });
+    }
+
+    function rolloutSequenceImagePath(step, filename) {
+      var stepFolder = "step_" + String(step).padStart(4, "0");
+      return "static/images/rollout_sequence/" + stepFolder + "/" + filename;
+    }
+
+    function updateRolloutSequence(step) {
+      var slider = document.getElementById("rollout-sequence-slider");
+      var stepOutput = document.getElementById("rollout-sequence-step");
+      var previousButton = document.getElementById("rollout-sequence-previous");
+      var nextButton = document.getElementById("rollout-sequence-next");
+      if (!slider || !stepOutput || !previousButton || !nextButton) {
+        return;
+      }
+
+      var minimum = Number(slider.min);
+      var maximum = Number(slider.max);
+      var nextStep = Math.min(maximum, Math.max(minimum, Number(step)));
+
+      slider.value = nextStep;
+      stepOutput.value = nextStep;
+      stepOutput.textContent = nextStep;
+      previousButton.disabled = nextStep === minimum;
+      nextButton.disabled = nextStep === maximum;
+
+      ROLLOUT_SEQUENCE_IMAGES.forEach(function(imageConfig) {
+        var image = document.getElementById(imageConfig.id);
+        if (!image) {
+          return;
+        }
+        image.src = rolloutSequenceImagePath(nextStep, imageConfig.filename);
+        image.alt = imageConfig.alt + " at rollout step " + nextStep;
+      });
+      updateRolloutPointClouds(nextStep);
+      scheduleRolloutSequencePrefetch(nextStep);
+    }
+
+    function changeRolloutSequenceStep(offset) {
+      var slider = document.getElementById("rollout-sequence-slider");
+      if (!slider) {
+        return;
+      }
+      updateRolloutSequence(Number(slider.value) + offset);
+    }
+
+    function initializeRolloutSequence() {
+      var panel = document.getElementById("rollout-sequence-panel");
+      var slider = document.getElementById("rollout-sequence-slider");
+      var previousButton = document.getElementById("rollout-sequence-previous");
+      var nextButton = document.getElementById("rollout-sequence-next");
+      if (!panel || !slider || !previousButton || !nextButton) {
+        return;
+      }
+
+      previousButton.addEventListener("click", function() {
+        changeRolloutSequenceStep(-1);
+      });
+      nextButton.addEventListener("click", function() {
+        changeRolloutSequenceStep(1);
+      });
+      slider.addEventListener("input", function() {
+        updateRolloutSequence(this.value);
+      });
+      panel.addEventListener("keydown", function(event) {
+        if (event.target === slider) {
+          return;
+        }
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          changeRolloutSequenceStep(-1);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          changeRolloutSequenceStep(1);
+        }
+      });
+
+      initializeRolloutPointClouds();
+      updateRolloutSequence(0);
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+      populateTaskOptions();
+      updateTaskHighlight();
+      updateSimulationVideos();
+      initializeRolloutSequence();
+    });
+
+  </script>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/favicon.svg">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./static/js/index.js"></script>
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-widescreen">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <h1 class="title is-1 publication-title">Depth Camera or RGB-to-Depth?<br>A Study of RGB-to-Depth Estimation for Robot Policy Learning</h1>
+          <h2 class="title is-4 publication-subtitle">
+            Accepted for publication in <span class="publication-acceptance-highlight">Robotics and Automation Letters (RA-L) 2026.</span>
+          </h2>
+          <div class="is-size-5 publication-authors publication-author-list" aria-label="Authors">
+            <span class="author-block">
+              <a target="_blank" href="https://flycole.github.io/">Yifei Ren</a><sup>1</sup>,
+            </span>
+            <span class="author-block">
+              <a target="_blank" href="https://www.pietrovitiello.com/">Pietro Vitiello</a><sup>1</sup>,
+            </span>
+            <span class="author-block">
+              <a target="_blank" href="https://scholar.google.co.uk/citations?user=dHec-LkAAAAJ&hl=en">Edward Johns</a><sup>1</sup>,
+            </span>
+          </div>
+
+          <div class="is-size-5 publication-authors">
+            <span class="author-block"><sup>1</sup>Imperial College London</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hero is-light is-small">
+  <div class="hero-body">
+    <div class="container">
+      <div id="results-carousel" class="carousel results-carousel">
+        <div class="item item-01">
+          <video poster="" id="01" autoplay controls muted loop playsinline height="100%">
+            <source src="./static/videos/challenging/transparent_cup_into_bin_pi3.mp4"
+                    type="video/mp4">
+          </video>
+        </div>
+        <div class="item item-02">
+          <video poster="" id="02" autoplay controls muted loop playsinline height="100%">
+            <source src="./static/videos/challenging/box_into_transparent_basket_pi3.mp4"
+                    type="video/mp4">
+          </video>
+        </div>
+        <div class="item item-03">
+          <video poster="" id="03" autoplay controls muted loop playsinline height="100%">
+            <source src="./static/videos/challenging/tilt_mesh_basket_to_pour_out_fruit_pi3.mp4"
+                    type="video/mp4">
+          </video>
+        </div>
+        <div class="item item-04">
+          <video poster="" id="04" autoplay controls muted loop playsinline height="100%">
+            <source src="./static/videos/challenging/pick_up_goblet_near_mirror_pi3.mp4"
+                    type="video/mp4">
+          </video>
+        </div>
+        <div class="item item-blueshirt">
+          <video poster="" id="blueshirt" autoplay controls muted loop playsinline height="100%">
+            <source src="./static/videos/challenging/metal_bowl_on_plate_pi3.mp4"
+                    type="video/mp4">
+          </video>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            Point cloud–based robot policy learning has emerged as a powerful approach for robotic manipulation by enabling policies to directly exploit 3D geometric structure. In such pipelines, depth image acquisition plays a critical role in point cloud construction. However, raw depth from depth cameras is often noisy, sensitive to transparent, reflective, and repetitive surfaces, and limited by a minimum sensing distance. 
+            Recent advances in learned depth estimation offer a promising alternative: modern monocular, stereo, and multi-view approaches have achieved impressive performance in vision benchmarks. However, robotics still lacks a systematic understanding of how these advances translate to end-to-end policy learning and execution.
+          </p>
+          <p>
+            In this work, based on our introduced Depth-Estimated Imitation Learning (DEIL) general framework, we present the first systematic study of how modern depth estimation impacts point cloud–based imitation learning across two paradigms: In-Context Imitation Learning (ICIL) and Behaviour Cloning (BC). Within each paradigm, we keep the point cloud reconstruction procedure, policy backbone, and evaluation protocol fixed across depth sources. Through <strong>71,800</strong> simulated and <strong>160</strong> real-world rollouts, several depth estimators achieve reasonable downstream performance in simulation, although a consistent gap to GT depth remains. In real-world ICIL, the best-performing multi-view estimator is competitive with the tested RGB-D cameras on normal tasks and achieves higher success when depth sensing is unreliable. Our failure mode analysis further shows that reconstructed geometric quality generally correlates with policy success, with flying points being particularly harmful to BC. These findings highlight the need for improved geometric awareness and stability before learned depth estimation can be broadly deployed in robot manipulation.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paper video. -->
+    <!-- <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Video</h2>
+        <div class="publication-video">
+          <iframe src=" "
+                  frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+        </div>
+      </div>
+    </div> -->
+    <!--/ Paper video. -->
+  <!-- </div> -->
+</section>
+
+<section class="section">
+  <div class="container is-max-widescreen">
+
+    <div class="columns is-centered">
+      
+      <!-- Overview -->
+      <div class="column">
+        <div class="content">
+          <h2 class="title is-3"><span class="dnerf">DEIL: Depth-Estimated Imitation Learning</span></h2>
+          <p>
+            To systematically study the role of depth estimation in imitation learning, particularly under challenging perceptual conditions, we propose a general framework <span class="dnerf">DEIL</span>. The framework consists of three main components: 
+            (1) a depth estimation module, 
+            (2) a point cloud reconstruction module, and 
+            (3) an imitation learning module. 
+            This modular design allows us to plug in different depth estimation methods while holding the learning framework fixed, enabling controlled evaluation of their impact on robot policy performance.
+          </p>
+
+          <img src="./static/images/DEIL_pipeline.png" 
+              class="mb-5"
+              alt="Interpolate start reference image."/>
+
+          <p>
+            First, in the depth estimation stage, raw RGB images are passed through a depth estimator to produce corresponding depth maps. Second, using the camera intrinsics and extrinsics, unscaled point clouds are reconstructed from each camera view, and a Scaled ICP method is applied to align and merge them into a unified representation. Third, point cloud–based behaviour cloning or in-context imitation learning methods are trained on the reconstructed 3D representations generated by the previous modules.
+          </p>
+
+          <p>
+            For reproducibility, full implementation details of the shared point-cloud reconstruction pipeline, including mask processing, estimator-specific depth preprocessing, calibrated back-projection, multi-view scale alignment and fusion, and policy-specific point-cloud sampling are provided in <a href="./static/data/additional_details.pdf" target="_blank" rel="noopener noreferrer">Additional Details for Point Cloud Reconstruction</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+    <!--/ Overview -->
+
+    <!-- Results. -->
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Results</h2>
+
+        <!-- Low-Budget Hyperparameter Screening. -->
+        <h4 class="title is-4">1. Low-Budget Hyperparameter Screening</h4>
+        <div class="content has-text-justified">
+          <p>
+            Exhaustively evaluating all estimators and configurations would require 216,000 rollouts, which is computationally expensive and exceeds our evaluation budget. We therefore conduct low-budget screening in simulation under the lightweight ICIL protocol. 
+            
+            Specifically, we evaluate different combinations of the hyperparameters on 10 manipulation tasks from RLBench. For each configuration-task pair, we use five demonstrations as separate contexts and perform two Instant Policy rollouts per demonstration, yielding 10 rollouts. We average the success rates across tasks to obtain the overall screening score. Complete results are reported in <a href="#appendix-simulation-results">Appendix I</a>.
+          </p>
+        </div>
+
+        <!-- Simulation Results. -->
+        <h3 class="title is-4">2. Simulation Results</h3>
+        
+        <h4 class="title is-5">2.1 In-Context Imitation Learning</h4>
+        <div class="content has-text-justified">
+          <p>
+            For the main experiments under ICIL, we collect 20 demonstrations per task. Conditioning each demonstration as a single context, we run Instant Policy  for 10 rollouts based on point clouds constructed through each depth variation. We report the average success rate across demonstrations, rollouts and tasks as the final performance metric. Note that for the depth camera baseline, we also report the all-camera setting (5 cameras), which is the same as in the original paper for fair comparison. Please refer to TABLE I in our paper for details.
+          </p>
+        </div>
+        
+        <h4 id="behaviour-cloning" class="title is-5">2.2 Behaviour Cloning</h4>
+        <div class="content has-text-justified">
+          <p>
+            In the BC paradigm, we use a <em>front / side</em> camera setup at 256 resolution and apply no image masking for any depth variation. For each task, we collect 100 demonstrations and generate depth images using each depth variant. To assess BC sensitivity to depth noise, we also add four corrupted-depth baselines by applying Gaussian noise with standard deviations of 10, 20, 30, and 40 mm to ground-truth (GT) depth. Together with the six original depth variants, this yields ten types of DP3 policies. For each policy, we evaluate up to seven checkpoints at 20-epoch intervals, using 50 rollouts with the same seeds for every checkpoint and depth variant, and select the best-performing checkpoint.
+          </p>
+
+          <p>
+            The main estimator comparisons and across-task averages are reported in Table II of our paper. Beyond these main results, the per-task visualisation below provides an additional breakdown and reveals that the effect of depth corruption varies between tasks.
+          </p>
+
+
+          <figure class="depth-noise-figure" aria-labelledby="depth-noise-caption">
+            <img
+              src="./static/images/task_depth_noise_sensitivity_curves.png"
+              alt="Line chart comparing behaviour-cloning success rates for ten tasks under additive depth noise from 0 to 40 millimetres."
+              loading="lazy"
+              decoding="async">
+            <p id="depth-noise-caption" class="depth-noise-caption">
+            Figure. 1: <strong>Task-dependent sensitivity to depth corruption.</strong> Task success rates under additive Gaussian depth noise with standard deviations from 10 to 40 mm; 0 mm denotes uncorrupted ground-truth depth. Each point represents 50 policy rollouts.
+          </p>
+          </figure>
+
+          <p>
+            Phone on Base remains at 100% success across all corruption levels, while Close Box is nearly unaffected. In contrast, Plate Out, Toilet Seat Up, and Toilet Roll Off deteriorate sharply when the noise standard deviation increases from only 10 to 20 mm. This contrast is consistent with a geometric explanation: depth noise displaces surfaces and object boundaries in the reconstructed point cloud. Tasks with clear, largely unoccluded geometry and greater action tolerance can absorb these perturbations, whereas substantial occlusion or precise contact requirements leave less spatial margin for reconstruction error.
+          </p>
+        </div>
+
+        <h4 class="title is-5">2.3 Behaviour Cloning Videos</h4>
+        <div class="columns">
+          <div class="column has-text-centered">
+            Simulation task:
+            <div class="select is-small is-rounded">
+              <!--
+                Each option value is a folder under static/videos/dp3_sim.
+                Its data-video-* attributes list the available estimator videos.
+              -->
+              <select id="simulation-menu-tasks" onchange="updateSimulationVideos();">
+                <option
+                  value="00_phone_on_base"
+                  data-video-gt="gt_013_success.mp4"
+                  data-video-pi3="pi3_013_success.mp4"
+                  data-video-vggt="vggt_013_success.mp4"
+                  data-video-moge="moge_013_success.mp4"
+                  data-video-mast3r="mast3r_013_success.mp4"
+                  data-video-map-anything="map_anything_013_success.mp4"
+                  selected>Phone on Base</option>
+                <option
+                  value="01_open_box"
+                  data-video-gt="gt_000_success.mp4"
+                  data-video-pi3="pi3_000_success.mp4"
+                  data-video-vggt="vggt_000_failure.mp4"
+                  data-video-moge="moge_000_failure.mp4"
+                  data-video-mast3r="mast3r_000_failure.mp4"
+                  data-video-map-anything="map_anything_000_failure.mp4">Open Box</option>
+                <option
+                  value="02_close_box"
+                  data-video-gt="gt_000_success.mp4"
+                  data-video-pi3="pi3_000_success.mp4"
+                  data-video-vggt="vggt_000_success.mp4"
+                  data-video-moge="moge_000_failure.mp4"
+                  data-video-mast3r="mast3r_000_success.mp4"
+                  data-video-map-anything="map_anything_000_success.mp4">Close Box</option>
+                <option
+                  value="03_plate_out"
+                  data-video-gt="gt_020_success.mp4"
+                  data-video-pi3="pi3_020_success.mp4"
+                  data-video-vggt="vggt_020_failure.mp4"
+                  data-video-moge="moge_020_success.mp4"
+                  data-video-mast3r="mast3r_020_failure.mp4"
+                  data-video-map-anything="map_anything_020_failure.mp4">Plate Out</option>
+                <option
+                  value="04_basketball"
+                  data-video-gt="gt_000_success.mp4"
+                  data-video-pi3="pi3_000_failure.mp4"
+                  data-video-vggt="vggt_000_success.mp4"
+                  data-video-moge="moge_000_failure.mp4"
+                  data-video-mast3r="mast3r_000_failure.mp4"
+                  data-video-map-anything="map_anything_000_failure.mp4">Basketball</option>
+                <option
+                  value="05_close_microwave"
+                  data-video-gt="gt_000_success.mp4"
+                  data-video-pi3="pi3_000_success.mp4"
+                  data-video-vggt="vggt_000_success.mp4"
+                  data-video-moge="moge_000_success.mp4"
+                  data-video-mast3r="mast3r_000_success.mp4"
+                  data-video-map-anything="map_anything_000_failure.mp4">Close Microwave</option>
+                <option
+                  value="06_toilet_seat_down"
+                  data-video-gt="gt_001_success.mp4"
+                  data-video-pi3="pi3_001_success.mp4"
+                  data-video-vggt="vggt_001_success.mp4"
+                  data-video-moge="moge_001_success.mp4"
+                  data-video-mast3r="mast3r_001_success.mp4"
+                  data-video-map-anything="map_anything_001_failure.mp4">Toilet Seat Down</option>
+                <option
+                  value="07_toilet_seat_up"
+                  data-video-gt="gt_046_success.mp4"
+                  data-video-pi3="pi3_046_success.mp4"
+                  data-video-vggt="vggt_046_success.mp4"
+                  data-video-moge="moge_046_success.mp4"
+                  data-video-mast3r="mast3r_046_success.mp4"
+                  data-video-map-anything="map_anything_046_failure.mp4">Toilet Seat Up</option>
+                <option
+                  value="08_toilet_roll_off"
+                  data-video-gt="gt_003_success.mp4"
+                  data-video-pi3="pi3_003_failure.mp4"
+                  data-video-vggt="vggt_003_failure.mp4"
+                  data-video-moge="moge_003_failure.mp4"
+                  data-video-mast3r="mast3r_003_failure.mp4"
+                  data-video-map-anything="map_anything_003_failure.mp4">Toilet Roll Off</option>
+                <option
+                  value="09_meat_off_grill"
+                  data-video-gt="gt_015_success.mp4"
+                  data-video-pi3="pi3_015_success.mp4"
+                  data-video-vggt="vggt_015_success.mp4"
+                  data-video-moge="moge_015_success.mp4"
+                  data-video-mast3r="mast3r_015_success.mp4"
+                  data-video-map-anything="map_anything_015_success.mp4">Meat Off Grill</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="simulation-videos-empty" class="notification is-light has-text-centered">
+          Rollout videos for this task are not available yet.
+        </div>
+
+        <div class="columns is-multiline simulation-video-grid">
+          <div class="column is-half-tablet is-one-third-desktop has-text-centered" data-simulation-card>
+            <p>
+              <video id="simulation-video-gt" data-simulation-estimator="gt" width="100%" controls autoplay loop muted playsinline></video>
+              <span style="color: #EA4335; font-weight: bold;">Depth camera</span>-based DEIL
+              <span class="tag simulation-video-outcome" data-simulation-outcome></span>
+            </p>
+          </div>
+          <div class="column is-half-tablet is-one-third-desktop has-text-centered" data-simulation-card>
+            <p>
+              <video id="simulation-video-pi3" data-simulation-estimator="pi3" width="100%" controls autoplay loop muted playsinline></video>
+              <span style="color: #34A853; font-weight: bold;">&pi;3</span>-based DEIL
+              <span class="tag simulation-video-outcome" data-simulation-outcome></span>
+            </p>
+          </div>
+          <div class="column is-half-tablet is-one-third-desktop has-text-centered" data-simulation-card>
+            <p>
+              <video id="simulation-video-vggt" data-simulation-estimator="vggt" width="100%" controls autoplay loop muted playsinline></video>
+              <span style="color: #1967D2; font-weight: bold;">VGGT</span>-based DEIL
+              <span class="tag simulation-video-outcome" data-simulation-outcome></span>
+            </p>
+          </div>
+          <div class="column is-half-tablet is-one-third-desktop has-text-centered" data-simulation-card>
+            <p>
+              <video id="simulation-video-moge" data-simulation-estimator="moge" width="100%" controls autoplay loop muted playsinline></video>
+              <span style="color: #7D3C98; font-weight: bold;">MoGe</span>-based DEIL
+              <span class="tag simulation-video-outcome" data-simulation-outcome></span>
+            </p>
+          </div>
+          <div class="column is-half-tablet is-one-third-desktop has-text-centered" data-simulation-card>
+            <p>
+              <video id="simulation-video-mast3r" data-simulation-estimator="mast3r" width="100%" controls autoplay loop muted playsinline></video>
+              <span style="color: #00897B; font-weight: bold;">MASt3R</span>-based DEIL
+              <span class="tag simulation-video-outcome" data-simulation-outcome></span>
+            </p>
+          </div>
+          <div class="column is-half-tablet is-one-third-desktop has-text-centered" data-simulation-card>
+            <p>
+              <video id="simulation-video-map-anything" data-simulation-estimator="map_anything" width="100%" controls autoplay loop muted playsinline></video>
+              <span style="color: #B77900; font-weight: bold;">MapAnything</span>-based DEIL
+              <span class="tag simulation-video-outcome" data-simulation-outcome></span>
+            </p>
+          </div>
+        </div>
+
+        <div id="rollout-sequence-panel" class="rollout-sequence-panel" tabindex="0" aria-label="Interactive behaviour cloning rollout sequence">
+          <div class="has-text-centered">
+            <h5 class="title is-5 rollout-sequence-title">Example Rollout Sequence</h5>
+            <p class="rollout-sequence-description">
+              Move through the 46-step sequence using the controls, slider, or left and right arrow keys.
+            </p>
+          </div>
+
+          <div class="rollout-sequence-controls">
+            <button id="rollout-sequence-previous" class="button is-small is-light" type="button" aria-label="Show previous rollout step">
+              <span aria-hidden="true">&larr;</span>
+              <span>Previous</span>
+            </button>
+            <span class="rollout-sequence-step-label">
+              Step <output id="rollout-sequence-step" for="rollout-sequence-slider" aria-live="polite">0</output> / 45
+            </span>
+            <button id="rollout-sequence-next" class="button is-small is-light" type="button" aria-label="Show next rollout step">
+              <span>Next</span>
+              <span aria-hidden="true">&rarr;</span>
+            </button>
+          </div>
+
+          <div class="rollout-sequence-slider-row">
+            <label for="rollout-sequence-slider">Sequence step</label>
+            <input id="rollout-sequence-slider" class="slider is-fullwidth is-info" type="range" min="0" max="45" value="0" step="1">
+          </div>
+
+          <div class="rollout-sequence-comparison">
+            <div class="rollout-sequence-viewport rollout-sequence-images">
+              <table class="rollout-sequence-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Camera</th>
+                    <th scope="col">Raw RGB</th>
+                    <th scope="col">Mask</th>
+                    <th scope="col">Masked RGB</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row"><span>Front</span><small>camera</small></th>
+                    <td><img id="rollout-front-raw" src="./static/images/rollout_sequence/step_0000/front_raw_rgb.png" alt="Front camera raw RGB at rollout step 0" loading="lazy" decoding="async" draggable="false"></td>
+                    <td><img id="rollout-front-mask" src="./static/images/rollout_sequence/step_0000/front_mask.png" alt="Front camera mask at rollout step 0" loading="lazy" decoding="async" draggable="false"></td>
+                    <td><img id="rollout-front-masked" src="./static/images/rollout_sequence/step_0000/front_masked_rgb.png" alt="Front camera masked RGB at rollout step 0" loading="lazy" decoding="async" draggable="false"></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><span>Left</span><small>camera</small></th>
+                    <td><img id="rollout-left-raw" src="./static/images/rollout_sequence/step_0000/left_shoulder_raw_rgb.png" alt="Left camera raw RGB at rollout step 0" loading="lazy" decoding="async" draggable="false"></td>
+                    <td><img id="rollout-left-mask" src="./static/images/rollout_sequence/step_0000/left_shoulder_mask.png" alt="Left camera mask at rollout step 0" loading="lazy" decoding="async" draggable="false"></td>
+                    <td><img id="rollout-left-masked" src="./static/images/rollout_sequence/step_0000/left_shoulder_masked_rgb.png" alt="Left camera masked RGB at rollout step 0" loading="lazy" decoding="async" draggable="false"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="rollout-sequence-divider" role="separator" aria-orientation="vertical"></div>
+
+            <div class="rollout-point-cloud-grid" aria-label="Point clouds generated from both camera views">
+              <section class="rollout-point-cloud-card">
+                <h6 class="rollout-point-cloud-title">&pi;<sup>3</sup></h6>
+                <div class="rollout-point-cloud-viewer">
+                  <canvas id="rollout-pi3-point-cloud" tabindex="0" aria-label="Interactive pi cubed point cloud. Drag to rotate and scroll to zoom."></canvas>
+                  <span class="rollout-point-cloud-status" data-point-cloud-status>Loading point cloud&hellip;</span>
+                  <span class="rollout-point-cloud-help" aria-hidden="true">Drag to rotate &middot; Scroll to zoom &middot; Double-click to reset</span>
+                </div>
+              </section>
+              <section class="rollout-point-cloud-card">
+                <h6 class="rollout-point-cloud-title">GT</h6>
+                <div class="rollout-point-cloud-viewer">
+                  <canvas id="rollout-gt-point-cloud" tabindex="0" aria-label="Interactive ground-truth point cloud. Drag to rotate and scroll to zoom."></canvas>
+                  <span class="rollout-point-cloud-status" data-point-cloud-status>Loading point cloud&hellip;</span>
+                  <span class="rollout-point-cloud-help" aria-hidden="true">Drag to rotate &middot; Scroll to zoom &middot; Double-click to reset</span>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+        <!--/ Simulation Results. -->
+
+        <!-- Real-World Results. -->
+        <h3 class="title is-4">2. Real-World Results</h3>
+        <div class="content has-text-justified">
+          <p>
+            We evaluate the performance of different depth estimation methods on a suite of real-world manipulation tasks under challenging visual conditions, including transparent, reflective, and textureless objects. Our results show that depth estimation approaches could narrow the gap to depth images from depth cameras. Moreover, it delivers significant gains in real-world manipulation tasks under challenging visual conditions.
+          </p>
+        </div>
+        <!--/ Real-World Results. -->
+
+        <h4 class="title is-5">2.1 In-Context Imitation Learning</h4>
+
+        <div class="columns">
+          <div class="column has-text-centered">
+
+            ICIL task category:
+            <div class="select is-small is-rounded">     
+              <select id="menu-levels" onchange="populateTaskOptions(); updateVideo(); updateTaskHighlight();">
+              <option value="challenging" selected="selected">Challenging</option>
+              <option value="normal">Normal</option>
+              </select>
+            </div>
+
+            ICIL task name: 
+            <div class="select is-small is-rounded">     
+              <select id="menu-tasks" onchange="updateVideo(); updateTaskHighlight();">
+              </select>
+            </div>
+            <span id="task-highlight-badge" class="task-highlight-badge">[TRANSPARENT]</span>
+
+          </div>
+
+        </div>
+
+        <div class="columns">
+          <div class="column is-one-third has-text-centered">
+            <p style="text-align:center;">
+              <video style="border-radius: 7px;" id="interactive-video-gt" width="100%" height="100%" controls autoplay loop muted>
+                <source src="./static/videos/challenging/transparent_cup_into_bin_gt.mp4" type="video/mp4">
+              </video>
+              <span style="color: #EA4335; font-weight: bold;">Depth camera</span>-based DEIL
+            </p>
+          </div>
+          <div class="column is-one-third has-text-centered">
+            <p style="text-align:center;">
+              <video style="border-radius: 7px;" id="interactive-video-pi3" width="100%" height="100%" controls autoplay loop muted>
+                <source src="./static/videos/challenging/transparent_cup_into_bin_pi3.mp4" type="video/mp4">
+              </video>
+              <span style="color: #34A853; font-weight: bold;">&pi;<sup>3</sup></span>-based DEIL
+            </p>
+          </div>
+          <div class="column is-one-third has-text-centered">
+            <p style="text-align:center;">
+              <video style="border-radius: 7px;" id="interactive-video-vggt" width="100%" height="100%" controls autoplay loop muted>
+                <source src="./static/videos/challenging/transparent_cup_into_bin_vggt.mp4" type="video/mp4">
+              </video>
+              <span style="color: #1967D2; font-weight: bold;">VGGT</span>-based DEIL 
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!--/ Results.. -->
+
+  </div>
+</section>
+
+<section class="section" id="appendix-simulation-results">
+  <div class="container is-max-widescreen">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Appendix</h2>
+        <h3 class="title is-4">I. Low-Budget Hyperparameter Screening Results</h3>
+        <div id="simulation-results-status" class="notification is-light">
+          Loading simulation results from Excel...
+        </div>
+        <div id="simulation-results-table" class="table-container"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content has-text-centered">
+          <p>
+            Website template borrowed from <a href="https://github.com/nerfies/nerfies.github.io">NeRFies</a>, <a href="https://peract.github.io/">PerAct</a> and <a href="https://voxposer.github.io/">VoxPoser</a>. 
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
