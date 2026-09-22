@@ -398,12 +398,14 @@ body {
 
 .rollout-point-cloud-viewer {
   position: relative;
-  min-height: 280px;
-  flex: 1;
+  height: 280px;
+  min-height: 0;
+  flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid #d9dee7;
   border-radius: 7px;
   background: #08111f;
+  contain: layout paint;
 }
 
 .rollout-point-cloud-viewer canvas {
@@ -484,7 +486,7 @@ body {
   }
 
   .rollout-point-cloud-viewer {
-    min-height: 220px;
+    height: 220px;
   }
 }
 

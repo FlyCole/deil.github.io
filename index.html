@@ -417,8 +417,9 @@
 
     function RolloutPointCloudViewer(canvas) {
       this.canvas = canvas;
+      this.container = canvas.parentElement;
       this.context = canvas.getContext("2d");
-      this.status = canvas.parentElement.querySelector("[data-point-cloud-status]");
+      this.status = this.container.querySelector("[data-point-cloud-status]");
       this.data = null;
       this.loadToken = 0;
       this.yaw = 0;
@@ -436,7 +437,10 @@
         this.resizeObserver = new ResizeObserver(function() {
           viewer.resize();
         });
-        this.resizeObserver.observe(canvas);
+        // Observe the fixed-size wrapper rather than the canvas. Updating a
+        // canvas's drawing-buffer dimensions can change its intrinsic size in
+        // some browsers, which would otherwise create a resize feedback loop.
+        this.resizeObserver.observe(this.container);
       } else {
         window.addEventListener("resize", function() {
           viewer.resize();
@@ -777,7 +781,7 @@
               <a target="_blank" href="https://www.pietrovitiello.com/">Pietro Vitiello</a><sup>1</sup>,
             </span>
             <span class="author-block">
-              <a target="_blank" href="https://scholar.google.co.uk/citations?user=dHec-LkAAAAJ&hl=en">Edward Johns</a><sup>1</sup>,
+              <a target="_blank" href="https://scholar.google.co.uk/citations?user=dHec-LkAAAAJ&hl=en">Edward Johns</a><sup>1</sup>
             </span>
           </div>
 
